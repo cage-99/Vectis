@@ -100,8 +100,55 @@ func on_autofill_button_pressed():
 			if "TOTP:" in line:
 				totp = line.replace(" ", "").split("TOTP:")[1]
 		_inject_credentials(username, password, totp)
+		return
 	else:
 		print("KeePassXC-CLI Fehler oder Eintrag nicht gefunden.")
+		_autofill_using_bitwarden()
+
+var passwordFieldEnter = false
+
+func _autofill_using_bitwarden():
+	var entry_title = get_tree().get_nodes_in_group("CefTexture")[index].url.split("/")[2]
+	
+	var passwordMaster : String
+	
+	$"../Password".visible = true
+	$"../Password/LineEdit".grab_focus()
+	
+	while !passwordFieldEnter:
+		await get_tree().process_frame
+	
+	passwordFieldEnter = false
+	
+	passwordMaster = $"../Password/LineEdit".text
+	$"../Password/LineEdit".text = ""
+	
+	var output = []
+	var bash_args = [
+		"-c",
+		r"bw list items --url " + entry_title + r" --session $(bw unlock '" + passwordMaster + r"' | grep -io '.\{0,88\}$' | tail -n 1)"
+	]
+	
+	var exit_code = OS.execute("bash", bash_args, output, true)
+	
+	var username
+	var password
+	
+	if exit_code == 0 and output.size() > 0:
+		var json_string = output[0].strip_edges()
+		
+		var json = JSON.new()
+		var error = json.parse(json_string)
+		
+		if error == OK:
+			var data_received = json.data
+			if typeof(data_received) == TYPE_ARRAY:
+				password = data_received[0]["login"]["password"]
+				username = data_received[0]["login"]["username"]
+		else:
+			print("JSON Parse Error: ", json.get_error_message(), " at line ", json.get_error_line())
+	
+	_inject_credentials(username, password, "")
 
 func _ready() -> void:
 	#$"../CefTexture".request
@@ -275,3 +322,7 @@ func _load_easylist(path: String):
 
 #func on_cef_texture_load_finished(url: String, http_status_code: int) -> void:
 	#$"../TabManager".ExcJS('document.head.innerHTML+="<style>* { border-radius:0px !important; }</style>"')
+
+func _on_line_edit_text_submitted(new_text: String) -> void:
+	$"../Password".visible = false
+	passwordFieldEnter = true
