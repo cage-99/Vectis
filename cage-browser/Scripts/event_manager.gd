@@ -7,6 +7,8 @@ var markedElementsClass: PackedStringArray
 @export var style_mit_rand : StyleBox
 var rand_status_aktuell : bool = false
 var ad_blacklist: Dictionary = {}
+var sessionID = ""
+var sessionIDArray = []
 
 var _oldIndex = 1
 
@@ -112,8 +114,11 @@ func _autofill_using_bitwarden():
 	
 	var passwordMaster : String
 	
-	$"../Password".visible = true
-	$"../Password/LineEdit".grab_focus()
+	if sessionID == "":
+		$"../Password".visible = true
+		$"../Password/LineEdit".grab_focus()
+	else:
+		passwordFieldEnter = true
 	
 	while !passwordFieldEnter:
 		await get_tree().process_frame
@@ -124,10 +129,22 @@ func _autofill_using_bitwarden():
 	$"../Password/LineEdit".text = ""
 	
 	var output = []
-	var bash_args = [
+	var bash_args
+	if sessionID == "":
+		var exitcode = OS.execute("bash", ["-c", r"bw unlock '" + passwordMaster + r"' | grep -io '.\{0,88\}$' | tail -n 1"], sessionIDArray, true)
+		sessionID = sessionIDArray[0]
+		#print("Exit Code: " + str(exitcode))
+		if exitcode != 0 || sessionID == "" || len(sessionID) != 88 && len(sessionID) != 89:
+			#print("Inkorrekt with exit code: " + str(exitcode) + ", sessionID: \""+sessionID+"\" und sessionID length: " + str(len(sessionID)))
+			sessionID = ""
+			_autofill_using_bitwarden()
+			return
+	
+	bash_args = [
 		"-c",
-		r"bw list items --url " + entry_title + r" --session $(bw unlock '" + passwordMaster + r"' | grep -io '.\{0,88\}$' | tail -n 1)"
+		r"bw list items --url " + entry_title + r" --session " + sessionID
 	]
+	
 	
 	var exit_code = OS.execute("bash", bash_args, output, true)
 	
